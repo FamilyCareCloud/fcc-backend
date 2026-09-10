@@ -9,6 +9,14 @@ import { createHttpServer } from '../src/handlers/http.js';
 import { createLambdaHandler } from '../src/handlers/lambda.js';
 const now = '2026-09-10T05:00:00.000Z';
 const password = 'FamilyCare!12345';
+test('Lambda CORS 사전 요청은 인증 없이 처리하고 실제 요청은 인증을 유지', async () => {
+  const handler = createLambdaHandler(createApp(new Store()));
+  const event = { rawPath: '/groups', requestContext: { http: { method: 'OPTIONS' } }, headers: { origin: 'https://example.com' } };
+  const preflight = await handler(event);
+  assert.equal(preflight.statusCode, 204);
+  assert.equal(preflight.body, '');
+  assert.equal((await handler({ ...event, requestContext: { http: { method: 'GET' } } })).statusCode, 401);
+});
 async function fixture(options = {}) {
   const store = options.store ?? new Store();
   const app = createApp(store, { clock: () => now, ...options });

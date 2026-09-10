@@ -4,6 +4,7 @@ import { createCognitoAuth } from '../adapters/cognito.js';
 import { createAnalysisService } from '../services/bedrock.js';
 export function createLambdaHandler(app) {
   return async event => {
+    if (event.requestContext?.http?.method === 'OPTIONS') return { statusCode: 204, headers: { 'Cache-Control': 'no-store' }, body: '' };
     let response;
     try {
       const raw = event.isBase64Encoded ? Buffer.from(event.body ?? '', 'base64').toString('utf8') : event.body ?? '';
