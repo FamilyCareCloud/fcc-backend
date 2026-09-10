@@ -1,0 +1,110 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BackendStackDeployment",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:DescribeStackResource",
+        "cloudformation:ListStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:GetStackPolicy"
+      ],
+      "Resource": [
+        "arn:aws:cloudformation:ap-northeast-2:055047416353:stack/fcc-backend-dev/*",
+        "arn:aws:cloudformation:ap-northeast-2:055047416353:changeSet/samcli-deploy*/*"
+      ]
+    },
+    {
+      "Sid": "SamTransform",
+      "Effect": "Allow",
+      "Action": "cloudformation:CreateChangeSet",
+      "Resource": "arn:aws:cloudformation:ap-northeast-2:aws:transform/Serverless-2016-10-31"
+    },
+    {
+      "Sid": "TemplateValidation",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:ValidateTemplate",
+        "cloudformation:GetTemplateSummary"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ArtifactBucketMetadata",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning"
+      ],
+      "Resource": "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-oxjavtgeapap"
+    },
+    {
+      "Sid": "ListBackendArtifacts",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-oxjavtgeapap",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "fcc-backend-dev",
+            "fcc-backend-dev/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "BackendArtifacts",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:AbortMultipartUpload"
+      ],
+      "Resource": "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-oxjavtgeapap/fcc-backend-dev/*"
+    },
+    {
+      "Sid": "UpdateExistingBackendFunction",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:ListTags",
+        "lambda:GetPolicy",
+        "lambda:PublishVersion"
+      ],
+      "Resource": "arn:aws:lambda:ap-northeast-2:055047416353:function:fcc-backend-dev-Backend-vm2JCTCwffLM"
+    },
+    {
+      "Sid": "ReadExistingRuntimeRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": "arn:aws:iam::055047416353:role/fcc-backend-dev-BackendRole-ypNH6kQpQWTt"
+    },
+    {
+      "Sid": "PassExistingRuntimeRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::055047416353:role/fcc-backend-dev-BackendRole-ypNH6kQpQWTt",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "lambda.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

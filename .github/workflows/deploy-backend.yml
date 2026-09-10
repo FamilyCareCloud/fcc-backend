@@ -1,0 +1,90 @@
+name: Backend CI and deploy
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  SAM_CLI_TELEMETRY: '0'
+  STACK_NAME: fcc-backend-dev
+  FRONTEND_ORIGIN: https://develop.db2l4u9y804jp.amplifyapp.com
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: npm install --global pnpm@11.19.0
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm test
+      - uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3
+        with:
+          version: '1.164.0'
+      - run: sam validate --lint --template-file infra/frontend-backend-only.yaml
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/develop' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3
+        with:
+          version: '1.164.0'
+      - run: sam build --template-file infra/frontend-backend-only.yaml
+      - uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: fcc-backend-${{ github.run_id }}
+          role-duration-seconds: 3600
+      - name: Deploy existing backend stack
+        env:
+          ARTIFACT_BUCKET: ${{ vars.SAM_ARTIFACT_BUCKET }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_BUCKET"
+          sam deploy --template-file .aws-sam/build/template.yaml \
+            --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+            --s3-bucket "$ARTIFACT_BUCKET" --s3-prefix fcc-backend-dev \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides "FrontendOrigin=$FRONTEND_ORIGIN" \
+            --no-confirm-changeset --no-fail-on-empty-changeset
+      - name: Check public API and browser access
+        run: |
+          set -euo pipefail
+          API_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue | [0]" --output text)
+          curl --fail --silent --show-error --retry 5 --retry-all-errors "$API_URL/health" | jq -e '.status == "ok"'
+          STATUS=$(curl --silent --show-error -o /dev/null -w '%{http_code}' "$API_URL/me")
+          test "$STATUS" = 401
+          STATUS=$(curl --silent --show-error -D /tmp/fcc-cors-headers -o /dev/null -w '%{http_code}' \
+            -X OPTIONS "$API_URL/groups" -H "Origin: $FRONTEND_ORIGIN" \
+            -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: authorization,content-type')
+          test "$STATUS" = 204
+          grep -Fi "access-control-allow-origin: $FRONTEND_ORIGIN" /tmp/fcc-cors-headers
+          echo "### Backend deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "API: $API_URL" >> "$GITHUB_STEP_SUMMARY"
