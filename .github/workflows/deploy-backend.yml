@@ -63,6 +63,8 @@ jobs:
       - name: Deploy existing backend stack
         env:
           ARTIFACT_BUCKET: ${{ vars.SAM_ARTIFACT_BUCKET }}
+          STT_SERVICE_URL: ${{ vars.STT_SERVICE_URL }}
+          STT_SERVICE_API_KEY: ${{ secrets.STT_SERVICE_API_KEY }}
         run: |
           set -euo pipefail
           test -n "$ARTIFACT_BUCKET"
@@ -70,7 +72,7 @@ jobs:
             --stack-name "$STACK_NAME" --region "$AWS_REGION" \
             --s3-bucket "$ARTIFACT_BUCKET" --s3-prefix fcc-backend-dev \
             --capabilities CAPABILITY_IAM \
-            --parameter-overrides "FrontendOrigin=$FRONTEND_ORIGIN" \
+            --parameter-overrides "FrontendOrigin=$FRONTEND_ORIGIN" "SttServiceUrl=$STT_SERVICE_URL" "SttServiceApiKey=$STT_SERVICE_API_KEY" \
             --no-confirm-changeset --no-fail-on-empty-changeset
       - name: Check public API and browser access
         run: |

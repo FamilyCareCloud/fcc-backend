@@ -6,6 +6,15 @@ Parameters:
     Type: String
     Default: http://localhost:5173
     Description: Exact allowed frontend origin (use HTTPS for deployment)
+  SttServiceUrl:
+    Type: String
+    Default: ''
+    Description: Public HTTPS URL of the fcc-ai GPU STT service (e.g. a tunnel to a local machine). Empty disables voice questions (503).
+  SttServiceApiKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Shared secret sent as X-API-Key to the STT service. Leave empty only if the STT service itself requires no key.
 Resources:
   Database:
     Type: AWS::DynamoDB::Table
@@ -88,6 +97,8 @@ Resources:
           DYNAMODB_TABLE: !Ref Database
           COGNITO_CLIENT_ID: !Ref UserPoolClient
           AI_PROVIDER: local
+          STT_SERVICE_URL: !Ref SttServiceUrl
+          STT_SERVICE_API_KEY: !Ref SttServiceApiKey
       Policies:
         - Statement:
             - Effect: Allow

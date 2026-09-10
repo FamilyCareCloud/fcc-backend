@@ -3,9 +3,10 @@ import { fail } from '../domain.js';
 // fcc-ai(GPU 로컬 서비스, feature/stt-service)의 POST /transcribe 를 호출하는 어댑터.
 // 인수인계 요약(Bedrock)과 달리 STT는 GPU가 필요해 별도 프로세스로 분리되어 있다.
 export class SttService {
-  constructor({ baseUrl, timeoutMs = 15000, fetchImpl = fetch }) {
+  constructor({ baseUrl, apiKey, timeoutMs = 15000, fetchImpl = fetch }) {
     if (!baseUrl) throw new Error('STT_SERVICE_URL is required');
     this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.apiKey = apiKey;
     this.timeoutMs = timeoutMs;
     this.fetch = fetchImpl;
   }
@@ -14,7 +15,7 @@ export class SttService {
     form.append('file', new Blob([buffer], { type: mimeType || 'application/octet-stream' }), 'audio');
     let response;
     try {
-      response = await this.fetch(`${this.baseUrl}/transcribe`, { method: 'POST', body: form, signal: AbortSignal.timeout(this.timeoutMs) });
+      response = await this.fetch(`${this.baseUrl}/transcribe`, { method: 'POST', body: form, headers: this.apiKey ? { 'X-API-Key': this.apiKey } : undefined, signal: AbortSignal.timeout(this.timeoutMs) });
     } catch {
       fail(502, '음성 인식 서비스에 연결할 수 없습니다.');
     }
@@ -34,5 +35,5 @@ export class LocalSttService {
 }
 export function createSttService(env = process.env) {
   if (!env.STT_SERVICE_URL) return new LocalSttService();
-  return new SttService({ baseUrl: env.STT_SERVICE_URL, timeoutMs: Number(env.STT_TIMEOUT_MS) || 15000 });
+  return new SttService({ baseUrl: env.STT_SERVICE_URL, apiKey: env.STT_SERVICE_API_KEY, timeoutMs: Number(env.STT_TIMEOUT_MS) || 15000 });
 }
