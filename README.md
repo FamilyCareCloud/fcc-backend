@@ -66,6 +66,7 @@ pnpm test
 
 ## 문서
 
+- [첫 배포 주소·설정·재배포 방법](docs/DEPLOYMENT.md)
 - [최신 설계 원문](docs/FCC.md)
 - [API 계약](docs/API.md)
 - [설계 대비 구현 현황](docs/IMPLEMENTATION_PLAN.md)
