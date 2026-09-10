@@ -244,6 +244,33 @@ test('소유권 이전 이후 탈퇴와 새 소유자 초대 권한', async () =
   assert.equal((await f.call('POST', `${f.p}/invitations`, { email: 'new@example.com' }, f.next)).status, 201);
   assert.equal((await f.call('GET', f.p)).status, 404);
 });
+test('텍스트/음성 질문은 동일한 DB 근거 답변을 반환, 음성은 STT를 거쳐 전사 결과를 포함', async () => {
+  const f = await fixture({ stt: { transcribe: async (buffer, mimeType) => { assert.ok(Buffer.isBuffer(buffer)); assert.equal(mimeType, 'audio/wav'); return '오늘 병원 일정이 있나요?'; } } });
+  await makeSchedule(f, { scheduledAt: '2026-09-10T15:00:00+09:00' });
+  const text = await f.call('POST', `${f.p}/assistant`, { question: '오늘 병원 일정이 있나요?' });
+  assert.equal(text.status, 200);
+  assert.ok(text.body.answer.includes('내과 진료'));
+  const audioBase64 = Buffer.from('가짜 오디오').toString('base64');
+  const voice = await f.call('POST', `${f.p}/assistant/voice`, { audioBase64, mimeType: 'audio/wav' });
+  assert.equal(voice.status, 200);
+  assert.equal(voice.body.transcript, '오늘 병원 일정이 있나요?');
+  assert.equal(voice.body.answer, text.body.answer);
+});
+test('음성 질문은 STT 미설정 시 503, 용량 초과 시 413, 비회원은 STT 호출 전 차단', async () => {
+  const unset = await fixture();
+  const audioBase64 = Buffer.from('가짜 오디오').toString('base64');
+  assert.equal((await unset.call('POST', `${unset.p}/assistant/voice`, { audioBase64, mimeType: 'audio/wav' })).status, 503);
+
+  let calls = 0;
+  const f = await fixture({ stt: { transcribe: async () => { calls++; return '병원 언제예요?'; } } }), outsider = await f.signup('voice-outsider@example.com', '다른 가족');
+  assert.equal((await f.call('POST', `${f.p}/assistant/voice`, { audioBase64, mimeType: 'audio/wav' }, outsider)).status, 404);
+  assert.equal(calls, 0);
+  const oversized = Buffer.alloc(5 * 1024 * 1024).toString('base64');
+  assert.equal((await f.call('POST', `${f.p}/assistant/voice`, { audioBase64: oversized, mimeType: 'audio/wav' })).status, 413);
+  assert.equal(calls, 0);
+  assert.equal((await f.call('POST', `${f.p}/assistant/voice`, { audioBase64, mimeType: 'audio/wav' })).status, 200);
+  assert.equal(calls, 1);
+});
 test('저장 실패 시 그룹 생성과 사용자 멤버십을 함께 롤백', async () => {
   const f = await fixture();
   const original = f.store.transaction.bind(f.store);

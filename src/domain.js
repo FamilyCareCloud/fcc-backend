@@ -33,6 +33,14 @@ export const email = value => {
   return normalized;
 };
 export const dayInSeoul = value => new Date(Date.parse(value) + 9 * 3600000).toISOString().slice(0, 10);
+export const audioMimeTypes = ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/flac', 'audio/ogg', 'audio/webm'];
+export function base64Audio(value, maxBytes) {
+  if (typeof value !== 'string' || !value.trim()) fail(400, 'audioBase64: 올바른 문자열이 필요합니다.');
+  let buffer;
+  try { buffer = Buffer.from(value, 'base64'); } catch { fail(400, 'audioBase64: 올바른 base64 인코딩이 필요합니다.'); }
+  if (!buffer.length || buffer.length > maxBytes) fail(413, `audioBase64: 오디오 용량은 ${Math.floor(maxBytes / 1024)}KB 이하여야 합니다.`);
+  return buffer;
+}
 export function range(input, now) {
   const fromDate = date(input.fromDate ?? new Date(Date.parse(now) - 7 * 86400000).toISOString(), 'fromDate');
   const toDate = date(input.toDate ?? now, 'toDate');

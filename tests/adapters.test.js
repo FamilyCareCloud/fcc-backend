@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { BedrockService } from '../src/services/bedrock.js';
 import { DynamoStore } from '../src/adapters/dynamodb.js';
 import { CognitoAuthService } from '../src/adapters/cognito.js';
+import { SttService, LocalSttService, createSttService } from '../src/adapters/stt.js';
 import { Store } from '../src/store.js';
 import { ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
@@ -97,4 +98,25 @@ test('Cognito는 GetUser로 토큰 확인·이메일 인증 강제·로그아웃
   assert.equal((await auth.profile('user-id', 'GET')).name, '테스트');
   assert.equal((await auth.logout('token')).loggedOut, true);
   assert.ok(calls.includes('GlobalSignOutCommand'));
+});
+test('STT(fcc-ai)는 multipart로 오디오를 전송, 실패·미인식·연결 불가를 구분해 오류 반환', async () => {
+  const calls = [];
+  const ok = new SttService({ baseUrl: 'http://stt.local/', fetchImpl: async (url, init) => { calls.push({ url, init }); return { ok: true, json: async () => ({ text: ' 병원 다녀왔어요 ' }) }; } });
+  assert.equal(await ok.transcribe(Buffer.from('audio'), 'audio/wav'), '병원 다녀왔어요');
+  assert.equal(calls[0].url, 'http://stt.local/transcribe');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.ok(calls[0].init.body instanceof FormData);
+
+  const unreachable = new SttService({ baseUrl: 'http://stt.local', fetchImpl: async () => { throw new Error('ECONNREFUSED'); } });
+  await assert.rejects(unreachable.transcribe(Buffer.from('a'), 'audio/wav'), error => error.status === 502);
+
+  const failed = new SttService({ baseUrl: 'http://stt.local', fetchImpl: async () => ({ ok: false }) });
+  await assert.rejects(failed.transcribe(Buffer.from('a'), 'audio/wav'), error => error.status === 502);
+
+  const empty = new SttService({ baseUrl: 'http://stt.local', fetchImpl: async () => ({ ok: true, json: async () => ({ text: '   ' }) }) });
+  await assert.rejects(empty.transcribe(Buffer.from('a'), 'audio/wav'), error => error.status === 422);
+
+  await assert.rejects(new LocalSttService().transcribe(), error => error.status === 503);
+  assert.ok(createSttService({}) instanceof LocalSttService);
+  assert.ok(createSttService({ STT_SERVICE_URL: 'http://stt.local' }) instanceof SttService);
 });

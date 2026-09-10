@@ -77,12 +77,13 @@ type: hospital/examination/visit/care_center/medication/other. 상태: scheduled
 
 - GET/POST `/groups/{g}/approvals`: 조회/요청 생성(scheduleId, action: cancel/reschedule, reason, reschedule은 proposedAt 필수).
 - PATCH `/groups/{g}/approvals/{id}`: decision: approve/reject/call. 현재 담당자만. call은 연락 필요 표시이며 발송하지 않습니다.
-- POST `/groups/{g}/assistant`: question. DB 기반 제한된 한국어 병원/복약/방문/오늘 일정/담당자 조회. 주간·월간 등 복잡한 자연어 기간 파싱과 음성은 미지원입니다.
+- POST `/groups/{g}/assistant`: question. DB 기반 제한된 한국어 병원/복약/방문/오늘 일정/담당자 조회. 주간·월간 등 복잡한 자연어 기간 파싱은 미지원입니다.
+- POST `/groups/{g}/assistant/voice`: audioBase64(base64 오디오, 기본 4MB 이하), 선택 mimeType. [fcc-ai](https://github.com/FamilyCareCloud/fcc-ai)의 GPU STT(`feature/stt-service`, Whisper-small+LoRA)로 전사한 뒤 `/groups/{g}/assistant`와 동일한 DB 근거 답변을 반환합니다. 응답에 `transcript`가 추가됩니다. `STT_SERVICE_URL` 미설정 시 **503**, STT 서버 연결 실패/오류 시 **502**, 인식 결과가 비어있으면 **422**, 오디오가 `AUDIO_MAX_BYTES`(기본 4MB)를 넘으면 **413**입니다. fcc-ai는 로컬 GPU 환경에서 별도 프로세스(uvicorn)로 실행해야 합니다.
 
 ## 데이터·오류 계약
 
 API의 `id`는 엔티티별 eventId/scheduleId/careGroupId/handoffId에 해당합니다. 중첩 관계는 group.elder와 각 리소스 elderId로 표현합니다. 목록은 현재 소규모 MVP 범위에서 전체 배열을 반환합니다.
 
-성공은 일반 요청 200, 그룹·기록·일정·초대·고령자·인수인계 생성 201. 오류는 400(검증), 401(인증), 403(권한), 404(없음/다른 그룹), 409(충돌), 413(용량), 422(요약 기록 없음), 429(로그인 제한), 502(AI 실패), 503(인증/AWS 초기화), 500(저장 등 내부 실패).
+성공은 일반 요청 200, 그룹·기록·일정·초대·고령자·인수인계 생성 201. 오류는 400(검증), 401(인증), 403(권한), 404(없음/다른 그룹), 409(충돌), 413(용량), 422(요약 기록 없음/음성 미인식), 429(로그인 제한), 502(AI·STT 실패), 503(인증/AWS 초기화/STT 미설정), 500(저장 등 내부 실패).
 
 로컬 프론트 개발 서버는 백엔드로 프록시하세요. AWS CORS 허용 Origin은 배포 파라미터로 지정합니다. 민감한 응답에는 Cache-Control: no-store가 적용됩니다.

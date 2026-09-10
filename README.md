@@ -17,6 +17,7 @@ pnpm start
 $env:PORT = '3000'
 $env:DATA_FILE = './data/fcc-v2.json'
 $env:AI_PROVIDER = 'local'
+$env:STT_SERVICE_URL = 'http://127.0.0.1:8000'  # fcc-ai(feature/stt-service)를 별도로 실행 중일 때만 필요
 pnpm start
 ```
 
@@ -42,8 +43,18 @@ Invoke-RestMethod -Uri "$base/me" -Headers $headers
 - 기간별 인수인계 생성/상세/최신/이력/재생성/인수 확인, 생성 당시 원문 근거 보존
 - Bedrock Converse 연동, 응답 JSON·근거 ID·원문 인용 검증, AI 실패 시 롤백/오류 안내
 - DynamoDB 저장 어댑터와 동시 변경 조건 검사, AWS SAM 인프라 템플릿
+- [fcc-ai](https://github.com/FamilyCareCloud/fcc-ai)(GPU STT, `feature/stt-service`) 연동: `/groups/{g}/assistant/voice`가 오디오를 fcc-ai `/transcribe`로 전사한 뒤 기존 텍스트 질문과 동일한 DB 근거 답변으로 응답
 
-확장 기능인 승인 요청과 제한된 텍스트 일정 질문은 유지했습니다. 실제 알림 발송, 음성 인식/합성, 위치 감지는 이번 MVP 범위 밖입니다. 별도 `fcc-frontend` 저장소의 화면은 이 작업에서 수정하지 않았습니다.
+확장 기능인 승인 요청과 제한된 텍스트 일정 질문, GPU STT 연동 음성 질문은 유지했습니다. 실제 알림 발송, 음성 합성(TTS), 위치 감지는 이번 MVP 범위 밖입니다. 별도 `fcc-frontend` 저장소의 화면은 이 작업에서 수정하지 않았습니다.
+
+### 음성 질문(fcc-ai 연동)
+
+`fcc-ai`의 `feature/stt-service` 브랜치를 별도 GPU 환경에서 실행한 뒤(`uvicorn app.main:app --host 0.0.0.0 --port 8000`), 백엔드에 `STT_SERVICE_URL`만 지정하면 연결됩니다. 미설정 시 음성 질문 API는 항상 **503**을 반환하고, 텍스트 질문(`/groups/{g}/assistant`)에는 영향이 없습니다.
+
+```powershell
+$body = @{ audioBase64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes('sample.wav')); mimeType = 'audio/wav' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "$base/groups/$($group.id)/assistant/voice" -Headers $headers -ContentType 'application/json' -Body $body
+```
 
 ## 검증
 
