@@ -4,11 +4,27 @@ import { CareEventService, ScheduleService } from './services/care.js';
 import { HandoffService } from './services/handoff.js';
 import { ApprovalService } from './services/approvals.js';
 import { LocalAnalysisService } from './services/bedrock.js';
-import { fail, fields, text, dayInSeoul, sortBy } from './domain.js';
+import { LocalSttService } from './adapters/stt.js';
+import { fail, fields, text, base64Audio, dayInSeoul, sortBy } from './domain.js';
 import { CareGroupRepository, UserRepository } from './repositories/index.js';
 
-export function createApp(store, { clock = () => new Date().toISOString(), ai = new LocalAnalysisService(), auth: suppliedAuth } = {}) {
+const MAX_AUDIO_BYTES = Number(process.env.AUDIO_MAX_BYTES) || 4 * 1024 * 1024;
+
+export function createApp(store, { clock = () => new Date().toISOString(), ai = new LocalAnalysisService(), stt = new LocalSttService(), auth: suppliedAuth } = {}) {
   const auth = suppliedAuth ?? new AuthService(store, clock);
+  const answerQuestion = async (userId, groupId, question) => store.transaction(async tx => {
+    const { group } = await new CareGroupRepository(tx).forMember(groupId, userId);
+    if (/취소|변경|안\s*갈/.test(question)) return { mode: 'database', answer: '일정을 선택해 승인 요청을 등록해주세요.', sources: [], requiresApproval: true };
+    if (/담당|보호자/.test(question)) {
+      const profile = await new UserRepository(tx).findById(group.primaryCaregiverId);
+      return { mode: 'database', answer: `현재 담당 보호자는 ${profile?.name ?? '등록된 보호자'}입니다.`, sources: [{ groupId: group.id }] };
+    }
+    const type = /병원|진료/.test(question) ? 'hospital' : /약|복약/.test(question) ? 'medication' : /누가|방문/.test(question) ? 'visit' : null;
+    if (!type && !/오늘.*일정/.test(question)) return { mode: 'database', answer: '병원·복약·방문·오늘 일정 또는 담당 보호자를 질문해주세요.', sources: [] };
+    const now = clock();
+    const found = group.schedules.filter(s => !s.deletedAt && s.status === 'scheduled' && (!type || s.type === type) && s.scheduledAt >= now && (!/오늘/.test(question) || dayInSeoul(s.scheduledAt) === dayInSeoul(now))).sort(sortBy('scheduledAt'));
+    return { mode: 'database', answer: found.length ? found.slice(0, 5).map(s => `${s.title}: ${new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'full', timeStyle: 'short' }).format(new Date(s.scheduledAt))}`).join('\n') : '조건에 맞는 예정 일정이 없습니다.', sources: found.slice(0, 5).map(s => ({ scheduleId: s.id })) };
+  });
   const groups = new CareGroupService(store, clock), events = new CareEventService(store, clock, ai), schedules = new ScheduleService(store, clock), handoffs = new HandoffService(store, clock, ai), approvals = new ApprovalService(store, clock);
   return async function handle({ method, path, token, body = {} }) {
     try {
@@ -38,19 +54,14 @@ export function createApp(store, { clock = () => new Date().toISOString(), ai = 
           else if (resource === 'approvals' && !action) { result = await approvals.execute(userId, groupId, method, id, body); status = method === 'POST' ? 201 : 200; }
           else if (resource === 'assistant' && !id && method === 'POST') {
             fields(body, ['question']); const question = text(body.question, 'question', 500);
-            result = await store.transaction(async tx => {
-              const { group } = await new CareGroupRepository(tx).forMember(groupId, userId);
-              if (/취소|변경|안\s*갈/.test(question)) return { mode: 'database', answer: '일정을 선택해 승인 요청을 등록해주세요.', sources: [], requiresApproval: true };
-              if (/담당|보호자/.test(question)) {
-                const profile = await new UserRepository(tx).findById(group.primaryCaregiverId);
-                return { mode: 'database', answer: `현재 담당 보호자는 ${profile?.name ?? '등록된 보호자'}입니다.`, sources: [{ groupId: group.id }] };
-              }
-              const type = /병원|진료/.test(question) ? 'hospital' : /약|복약/.test(question) ? 'medication' : /누가|방문/.test(question) ? 'visit' : null;
-              if (!type && !/오늘.*일정/.test(question)) return { mode: 'database', answer: '병원·복약·방문·오늘 일정 또는 담당 보호자를 질문해주세요.', sources: [] };
-              const now = clock();
-              const found = group.schedules.filter(s => !s.deletedAt && s.status === 'scheduled' && (!type || s.type === type) && s.scheduledAt >= now && (!/오늘/.test(question) || dayInSeoul(s.scheduledAt) === dayInSeoul(now))).sort(sortBy('scheduledAt'));
-              return { mode: 'database', answer: found.length ? found.slice(0, 5).map(s => `${s.title}: ${new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'full', timeStyle: 'short' }).format(new Date(s.scheduledAt))}`).join('\n') : '조건에 맞는 예정 일정이 없습니다.', sources: found.slice(0, 5).map(s => ({ scheduleId: s.id })) };
-            });
+            result = await answerQuestion(userId, groupId, question);
+          } else if (resource === 'assistant' && id === 'voice' && !action && method === 'POST') {
+            fields(body, ['audioBase64', 'mimeType']);
+            await store.transaction(tx => new CareGroupRepository(tx).forMember(groupId, userId));
+            const audio = base64Audio(body.audioBase64, MAX_AUDIO_BYTES);
+            const mimeType = body.mimeType === undefined ? undefined : text(body.mimeType, 'mimeType', 100);
+            const transcript = text(await stt.transcribe(audio, mimeType), 'question', 500);
+            result = { transcript, ...await answerQuestion(userId, groupId, transcript) };
           } else if (!action) { result = await groups.execute(userId, method, groupId, resource, id, body); status = method === 'POST' && ['elder', 'invitations'].includes(resource) ? 201 : 200; }
           else fail(404, '경로를 찾을 수 없습니다.');
         } else fail(404, '경로를 찾을 수 없습니다.');

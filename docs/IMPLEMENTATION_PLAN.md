@@ -17,6 +17,7 @@
 | AI 실패·빈 기록 예외 | 구현 | 502/422, 교대 롤백, 원문 보존 |
 | Handler → Service → Repository | 구현 | http/lambda, services, repositories, adapters 분리 |
 | DynamoDB·Cognito·Lambda·API Gateway | 코드/템플릿 구현 | AWS 계정 배포 전; 실제 클라우드 통합 미검증 |
+| 음성 질문(STT) | 구현 | fcc-ai(`feature/stt-service`, GPU Whisper-small+LoRA) 연동 어댑터·`/assistant/voice`; 실제 fcc-ai 프로세스 기동 후 통합 검증 필요 |
 | 프론트 화면 | 별도 저장소 | 이번 backend 작업 범위 밖 |
 
 ## 작업 순서
@@ -29,6 +30,6 @@
 
 ## 확장 범위
 
-설계서 2.5의 승인 요청과 제한된 DB 텍스트 질문은 유지했습니다. 승인 절차는 보호자의 일반 일정 취소에 강제하지 않습니다. 알림 발송/확인함, Transcribe/Polly 음성, 위치/생활 패턴 감지는 MVP 이후 작업입니다.
+설계서 2.5의 승인 요청과 제한된 DB 텍스트 질문은 유지했습니다. 승인 절차는 보호자의 일반 일정 취소에 강제하지 않습니다. 음성 질문은 AWS Transcribe/Polly 대신 fcc-ai의 자체 GPU STT(Whisper-small+LoRA, 노인 명령어 음성 파인튜닝)로 연결했습니다. 음성 합성(TTS), 알림 발송/확인함, 위치/생활 패턴 감지는 MVP 이후 작업입니다.
 
 설계 표의 이름별 ID는 API에서는 공통 `id`로 표현하고 사용자 ID는 `userId`를 유지합니다. 기존 v0.1 API와 데이터 변경점은 MIGRATION.md에 있습니다.

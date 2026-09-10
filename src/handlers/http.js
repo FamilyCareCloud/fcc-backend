@@ -1,4 +1,7 @@
 import { createServer } from 'node:http';
+const MAX_BODY = 65536;
+const MAX_VOICE_BODY = Number(process.env.AUDIO_MAX_BYTES) || 4 * 1024 * 1024; // base64 오디오는 원본보다 커서 별도 상한 적용
+const isVoicePath = url => /^\/groups\/[^/]+\/assistant\/voice(?:\?|$)/.test(url);
 export function createHttpServer(app) {
   const attempts = new Map();
   return createServer(async (req, res) => {
@@ -11,10 +14,11 @@ export function createHttpServer(app) {
         value.count++; attempts.set(key, value);
         if (value.count > 30) { const error = new Error('잠시 후 다시 시도하세요.'); error.status = 429; throw error; }
       }
+      const maxBody = isVoicePath(req.url) ? MAX_VOICE_BODY : MAX_BODY;
       const chunks = []; let size = 0;
       for await (const chunk of req) {
         size += chunk.length;
-        if (size > 65536) { const error = new Error('요청이 너무 큽니다.'); error.status = 413; throw error; }
+        if (size > maxBody) { const error = new Error('요청이 너무 큽니다.'); error.status = 413; throw error; }
         chunks.push(chunk);
       }
       const data = Buffer.concat(chunks).toString('utf8');
