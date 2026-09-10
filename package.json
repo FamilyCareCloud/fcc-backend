@@ -1,8 +1,23 @@
 {
   "name": "fcc-backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
-  "scripts": { "start": "node src/server.js", "test": "node --test" }
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "check": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "3.1128.0",
+    "@aws-sdk/client-cognito-identity-provider": "3.1128.0",
+    "@aws-sdk/client-dynamodb": "3.1128.0",
+    "@aws-sdk/lib-dynamodb": "3.1128.0"
+  },
+  "files": [
+    "src"
+  ]
 }

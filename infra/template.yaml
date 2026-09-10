@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: FCC backend - Cognito, HTTP API, Lambda and DynamoDB
+Parameters:
+  FrontendOrigin:
+    Type: String
+    Default: http://localhost:5173
+    Description: Exact allowed frontend origin (use HTTPS for deployment)
+  BedrockModelId:
+    Type: String
+    Default: ''
+    Description: Available Converse model ID; blank selects explicitly labelled offline mode
+  BedrockModelArn:
+    Type: String
+    Default: ''
+    Description: IAM ARN for the same regional foundation model (cross-region profiles need additional IAM configuration)
+Conditions:
+  HasModel: !Not [!Equals [!Ref BedrockModelId, '']]
+Rules:
+  ModelArnRequired:
+    RuleCondition: !Not [!Equals [!Ref BedrockModelId, '']]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref BedrockModelArn, '']]
+        AssertDescription: BedrockModelArn is required when BedrockModelId is provided
+Resources:
+  Database:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAtEpoch
+        Enabled: true
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+        - Name: name
+          Required: true
+          Mutable: true
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+      CorsConfiguration:
+        AllowOrigins: [!Ref FrontendOrigin]
+        AllowHeaders: [Authorization, Content-Type]
+        AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
+  Backend:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../
+      Handler: src/handlers/lambda.handler
+      Runtime: nodejs22.x
+      MemorySize: 512
+      Timeout: 29
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref Database
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
+          AI_PROVIDER: !If [HasModel, bedrock, local]
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem, dynamodb:ConditionCheckItem]
+              Resource: !GetAtt Database.Arn
+            - !If
+              - HasModel
+              - Effect: Allow
+                Action: [bedrock:InvokeModel]
+                Resource: !Ref BedrockModelArn
+              - !Ref AWS::NoValue
+      Events:
+        Routes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /{proxy+}
+            Method: ANY
+  BackendLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${Backend}'
+      RetentionInDays: 14
+Outputs:
+  ApiUrl:
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  TableName:
+    Value: !Ref Database
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
