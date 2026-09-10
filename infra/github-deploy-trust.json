@@ -10,7 +10,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:FamilyCareCloud/fcc-backend:ref:refs/heads/develop"
+          "token.actions.githubusercontent.com:sub": "repo:FamilyCareCloud@327336139/fcc-backend@1363526646:ref:refs/heads/develop"
         }
       }
     }

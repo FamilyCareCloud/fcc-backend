@@ -29,6 +29,8 @@ GitHub Actions의 `Backend CI and deploy`에서 실행 결과를 확인합니다
 
 AWS 인증은 OIDC를 사용합니다. 장기 액세스 키를 GitHub Secret에 저장하지 않습니다. AWS 역할은 `FamilyCareCloud/fcc-backend`의 `develop` 브랜치만 신뢰합니다.
 
+이 저장소는 GitHub의 immutable subject 형식을 사용합니다. 신뢰 조건은 `repo:FamilyCareCloud@327336139/fcc-backend@1363526646:ref:refs/heads/develop`입니다. 저장소의 실제 형식은 `gh api repos/FamilyCareCloud/fcc-backend/actions/oidc/customization/sub`의 `sub_claim_prefix`로 확인합니다. [GitHub OIDC 공식 설명](https://docs.github.com/en/actions/reference/security/oidc)
+
 저장소 Actions Variables:
 
 | 이름 | 값 |
