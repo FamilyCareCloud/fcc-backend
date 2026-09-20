@@ -11,7 +11,7 @@ export function createLambdaHandler(app) {
       const authorization = event.headers?.authorization ?? event.headers?.Authorization ?? '';
       response = await app({ method: event.requestContext?.http?.method, path: `${event.rawPath}${event.rawQueryString ? `?${event.rawQueryString}` : ''}`, token: authorization.startsWith('Bearer ') ? authorization.slice(7) : null, body: raw ? JSON.parse(raw) : {} });
     } catch { response = { status: 400, body: { error: '올바른 JSON 요청이 필요합니다.' } }; }
-    return { statusCode: response.status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }, body: JSON.stringify(response.body) };
+    return { statusCode: response.status, headers: { ...(response.status === 429 && response.body?.details?.retryAfterSeconds ? { 'Retry-After': String(response.body.details.retryAfterSeconds) } : {}), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }, body: JSON.stringify(response.body) };
   };
 }
 let appPromise;

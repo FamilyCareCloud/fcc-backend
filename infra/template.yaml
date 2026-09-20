@@ -53,10 +53,10 @@ Resources:
         CaseSensitive: false
       Policies:
         PasswordPolicy:
-          MinimumLength: 12
-          RequireLowercase: true
-          RequireUppercase: true
-          RequireNumbers: true
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireUppercase: false
+          RequireNumbers: false
           RequireSymbols: true
       Schema:
         - Name: email
@@ -103,6 +103,7 @@ Resources:
         Variables:
           DYNAMODB_TABLE: !Ref Database
           COGNITO_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_USER_POOL_ID: !Ref UserPool
           AI_PROVIDER: !If [HasModel, bedrock, local]
           BEDROCK_MODEL_ID: !Ref BedrockModelId
       Policies:
@@ -110,6 +111,9 @@ Resources:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem, dynamodb:ConditionCheckItem]
               Resource: !GetAtt Database.Arn
+            - Effect: Allow
+              Action: [cognito-idp:AdminGetUser]
+              Resource: !GetAtt UserPool.Arn
             - !If
               - HasModel
               - Effect: Allow

@@ -33,9 +33,10 @@ export function createApp(store, { clock = () => new Date().toISOString(), ai = 
       const parts = url.pathname.split('/').filter(Boolean);
       let result, status = 200;
       if (url.pathname === '/health' && method === 'GET') return { status: 200, body: { status: 'ok' } };
-      if (parts[0] === 'auth' && parts.length === 2 && method === 'POST' && ['register', 'login', 'confirm'].includes(parts[1])) {
+      if (parts[0] === 'auth' && parts.length === 2 && method === 'POST' && ['register', 'login', 'confirm', 'resend-confirmation'].includes(parts[1])) {
         if (parts[1] === 'confirm' && !auth.confirm) fail(404, '로컬 인증은 별도 확인 코드가 없습니다.');
-        result = await auth[parts[1]](body); status = parts[1] === 'register' ? 201 : 200;
+        if (parts[1] === 'resend-confirmation' && !auth.resend) fail(400, '로컬 인증은 이메일을 발송하지 않습니다.', 'EMAIL_VERIFICATION_NOT_SUPPORTED');
+        result = await auth[parts[1] === 'resend-confirmation' ? 'resend' : parts[1]](body); status = parts[1] === 'register' ? 201 : 200;
       } else {
         const userId = await auth.authenticate(token);
         if (url.pathname === '/auth/logout' && method === 'POST') { fields(body, []); result = await auth.logout(token); }
@@ -68,7 +69,7 @@ export function createApp(store, { clock = () => new Date().toISOString(), ai = 
       }
       return { status, body: result };
     } catch (error) {
-      return { status: error.status ?? 500, body: { error: error.status ? error.message : '서버 오류가 발생했습니다.', code: error.code ?? 'INTERNAL_ERROR' } };
+      return { status: error.status ?? 500, body: { error: error.status ? error.message : '서버 오류가 발생했습니다.', code: error.status ? error.code ?? 'REQUEST_ERROR' : 'INTERNAL_ERROR', ...(error.details ? { details: error.details } : {}) } };
     }
   };
 }
