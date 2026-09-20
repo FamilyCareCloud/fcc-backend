@@ -5,7 +5,7 @@ import { HandoffService } from './services/handoff.js';
 import { ApprovalService } from './services/approvals.js';
 import { LocalAnalysisService } from './services/bedrock.js';
 import { LocalSttService } from './adapters/stt.js';
-import { fail, fields, text, base64Audio, dayInSeoul, sortBy } from './domain.js';
+import { fail, fields, text, base64Audio, dayInSeoul, dateScope, sortBy } from './domain.js';
 import { CareGroupRepository, UserRepository } from './repositories/index.js';
 
 const MAX_AUDIO_BYTES = Number(process.env.AUDIO_MAX_BYTES) || 4 * 1024 * 1024;
@@ -20,10 +20,12 @@ export function createApp(store, { clock = () => new Date().toISOString(), ai = 
       return { mode: 'database', answer: `현재 담당 보호자는 ${profile?.name ?? '등록된 보호자'}입니다.`, sources: [{ groupId: group.id }] };
     }
     const type = /병원|진료/.test(question) ? 'hospital' : /약|복약/.test(question) ? 'medication' : /누가|방문/.test(question) ? 'visit' : null;
-    if (!type && !/오늘.*일정/.test(question)) return { mode: 'database', answer: '병원·복약·방문·오늘 일정 또는 담당 보호자를 질문해주세요.', sources: [] };
-    const now = clock();
-    const found = group.schedules.filter(s => !s.deletedAt && s.status === 'scheduled' && (!type || s.type === type) && s.scheduledAt >= now && (!/오늘/.test(question) || dayInSeoul(s.scheduledAt) === dayInSeoul(now))).sort(sortBy('scheduledAt'));
-    return { mode: 'database', answer: found.length ? found.slice(0, 5).map(s => `${s.title}: ${new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'full', timeStyle: 'short' }).format(new Date(s.scheduledAt))}`).join('\n') : '조건에 맞는 예정 일정이 없습니다.', sources: found.slice(0, 5).map(s => ({ scheduleId: s.id })) };
+    const now = clock(), scope = dateScope(question, now);
+    if (!type && !(scope && /일정/.test(question))) return { mode: 'database', answer: '병원·복약·방문·일정(오늘·내일·이번 주·다음 주) 또는 담당 보호자를 질문해주세요.', sources: [] };
+    const inScope = s => !scope || (dayInSeoul(s.scheduledAt) >= scope.from && dayInSeoul(s.scheduledAt) <= scope.to);
+    const found = group.schedules.filter(s => !s.deletedAt && s.status === 'scheduled' && (!type || s.type === type) && s.scheduledAt >= now && inScope(s)).sort(sortBy('scheduledAt'));
+    const none = scope ? `${scope.label} 예정된 일정이 없습니다.` : '조건에 맞는 예정 일정이 없습니다.';
+    return { mode: 'database', answer: found.length ? found.slice(0, 5).map(s => `${s.title}: ${new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'full', timeStyle: 'short' }).format(new Date(s.scheduledAt))}`).join('\n') : none, sources: found.slice(0, 5).map(s => ({ scheduleId: s.id })) };
   });
   const groups = new CareGroupService(store, clock), events = new CareEventService(store, clock, ai), schedules = new ScheduleService(store, clock), handoffs = new HandoffService(store, clock, ai), approvals = new ApprovalService(store, clock);
   return async function handle({ method, path, token, body = {} }) {
