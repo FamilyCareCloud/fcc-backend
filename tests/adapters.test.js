@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BedrockService } from '../src/services/bedrock.js';
+import { BedrockService, LocalAnalysisService } from '../src/services/bedrock.js';
 import { DynamoStore } from '../src/adapters/dynamodb.js';
 import { CognitoAuthService } from '../src/adapters/cognito.js';
 import { SttService, LocalSttService, createSttService } from '../src/adapters/stt.js';
@@ -126,4 +126,37 @@ test('STT(fcc-ai)는 multipart로 오디오를 전송, 실패·미인식·연결
   const configured = createSttService({ STT_SERVICE_URL: 'http://stt.local', STT_SERVICE_API_KEY: 'shared-secret' });
   assert.ok(configured instanceof SttService);
   assert.equal(configured.apiKey, 'shared-secret');
+});
+
+test('로컬 분류: 예약·약속을 복약으로 오분류하지 않고 증상은 관찰로 분류', async () => {
+  const ai = new LocalAnalysisService();
+  const cases = [
+    ['다음 주 화요일 정형외과 예약', 'schedule'], ['가족과 약속이 있어 외출하셨다', 'life'],
+    ['식사를 거의 못 하셨고 어지러움을 호소함', 'observation'], ['넘어지셔서 무릎이 아프다고 하심', 'observation'],
+    ['복용 안 함, 다음에 확인 필요', 'medication'], ['병원에서 약을 처방받음', 'hospital'], ['산책 30분 함', 'life']
+  ];
+  for (const [content, type] of cases) assert.equal((await ai.classifyCareEvent(content)).type, type, content);
+});
+test('로컬 요약: 관찰·일정 기록이 누락되지 않고 모든 항목이 원문 인용을 가짐', async () => {
+  const events = [
+    { id: 'e1', type: 'observation', content: '기침을 자주 하심' }, { id: 'e2', type: 'schedule', content: '정형외과 예약' },
+    { id: 'e3', type: 'meal', content: '점심을 다 드심' }
+  ];
+  const { sections } = await new LocalAnalysisService().summarizeCareEvents(events, []);
+  assert.deepEqual(sections.healthSummary.map(i => i.sources[0].id), ['e1']);
+  assert.deepEqual(sections.scheduleSummary.map(i => i.sources[0].id), ['e2']);
+  assert.deepEqual(sections.lifeSummary.map(i => i.sources[0].id), ['e3']);
+});
+test('Bedrock: 코드 펜스 JSON 허용, 검증 실패는 1회 재시도, 타임아웃은 재시도하지 않음', async () => {
+  const good = { type: 'meal', facts: [{ text: '식사', quote: '식사량 감소' }], followUp: [] };
+  const bad = { ...good, facts: [{ text: '식사', quote: '없는 인용' }] };
+  const scripted = replies => { let calls = 0; return { get calls() { return calls; }, ai: new BedrockService({ client: { send: async () => { const r = replies[calls++]; if (r instanceof Error) throw r; return { stopReason: 'end_turn', output: { message: { content: [{ text: r }] } } }; } }, modelId: 't', commandFactory: input => new ConverseCommand(input) }) }; };
+  const fenced = scripted([['```json', JSON.stringify(good), '```'].join('\n')]);
+  assert.equal((await fenced.ai.classifyCareEvent('식사량 감소')).type, 'meal');
+  const retry = scripted([JSON.stringify(bad), JSON.stringify(good)]);
+  assert.equal((await retry.ai.classifyCareEvent('식사량 감소')).mode, 'bedrock'); assert.equal(retry.calls, 2);
+  const twice = scripted([JSON.stringify(bad), JSON.stringify(bad), JSON.stringify(good)]);
+  await assert.rejects(twice.ai.classifyCareEvent('식사량 감소')); assert.equal(twice.calls, 2);
+  const timeout = scripted([Object.assign(new Error('t'), { name: 'TimeoutError' }), JSON.stringify(good)]);
+  await assert.rejects(timeout.ai.classifyCareEvent('식사량 감소')); assert.equal(timeout.calls, 1);
 });

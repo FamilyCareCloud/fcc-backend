@@ -29,15 +29,21 @@ export function validateSummary(value, events, schedules) {
 export class LocalAnalysisService {
   // Explicit offline mode. It never claims to be generative AI.
   async classifyCareEvent(content) {
-    const type = /병원|진료|내과|검사/.test(content) ? 'hospital' : /복약|약/.test(content) ? 'medication' : /식사|밥|식욕/.test(content) ? 'meal' : /일정|예약/.test(content) ? 'schedule' : /특이|감소|증가|불편/.test(content) ? 'observation' : 'life';
-    return { mode: 'local-rules', type, facts: [{ text: content, quote: content }], followUp: /다음|확인|감소|증가|불편/.test(content) ? [{ text: content, quote: content }] : [] };
+    // '예약'·'약속'의 '약'이 복약으로 오분류되지 않도록 판별용 문자열에서만 제거한다. 인용(quote)은 원문 그대로 유지한다.
+    const text = content.replace(/예약|약속|약간|약수/g, ' ');
+    const type = /어지러|통증|아프|아파|기침|열이|구토|설사|붓|넘어|낙상|잠을 못|불면|호소|불편|특이|감소|증가|떨어/.test(text) ? 'observation'
+      : /예약|일정/.test(content) ? 'schedule'
+      : /병원|진료|내과|외과|치과|의원|검사|입원|처방/.test(text) ? 'hospital'
+      : /복약|복용|약/.test(text) ? 'medication'
+      : /식사|밥|식욕|간식|죽/.test(text) ? 'meal' : 'life';
+    return { mode: 'local-rules', type, facts: [{ text: content, quote: content }], followUp: /다음|확인|필요|재방문|재검|추적|감소|증가|불편|호소/.test(text) ? [{ text: content, quote: content }] : [] };
   }
   async summarizeCareEvents(events, schedules) {
     const entry = e => ({ text: e.content, sources: [{ id: e.id, quote: e.content }] });
     return { mode: 'extractive', sections: {
-      healthSummary: events.filter(e => ['hospital', 'medication'].includes(e.type)).map(entry),
+      healthSummary: events.filter(e => ['hospital', 'medication', 'observation'].includes(e.type)).map(entry),
       lifeSummary: events.filter(e => ['meal', 'life', 'homecoming', 'care_center'].includes(e.type)).map(entry),
-      scheduleSummary: schedules.map(s => ({ text: `${s.title} (${s.scheduledAt})`, sources: [{ id: s.id, quote: s.title }] })),
+      scheduleSummary: [...events.filter(e => e.type === 'schedule').map(entry), ...schedules.map(s => ({ text: `${s.title} (${s.scheduledAt})`, sources: [{ id: s.id, quote: s.title }] }))],
       followUp: events.filter(e => e.type === 'observation' || e.analysis?.followUp?.length).map(entry)
     } };
   }
@@ -53,16 +59,25 @@ export class BedrockService {
     const response = await this.client.send(this.commandFactory({ modelId: this.modelId, system: [{ text: `${prompt}\nRequired schema: ${schema}` }], messages: [{ role: 'user', content: [{ text: serialized }] }], inferenceConfig: { maxTokens: 4096, temperature: 0 } }), { abortSignal: AbortSignal.timeout(this.timeoutMs) });
     if (response.stopReason !== 'end_turn') throw new Error('incomplete model output');
     const output = response.output?.message?.content?.map(item => item.text ?? '').join('');
-    return JSON.parse(output);
+    return JSON.parse(output.trim().replace(/^```(?:json)?s*|s*```$/g, ''));
+  }
+  // 모델 출력이 형식·근거 검증에 실패하면 한 번만 재시도한다. 입력 초과(413)·타임아웃 등은 재시도하지 않는다.
+  async generate(schema, data, validate) {
+    let last;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { return validate(await this.invoke(schema, data)); }
+      catch (error) { if (error.status || error.name === 'TimeoutError' || error.name === 'AbortError') throw error; last = error; }
+    }
+    throw last;
   }
   async classifyCareEvent(content) {
-    const value = await this.invoke('{"type":"hospital|medication|meal|life|schedule|observation","facts":[{"text":"fact","quote":"exact quote"}],"followUp":[{"text":"explicit follow-up","quote":"exact quote"}]}', { content });
-    return { ...validateAnalysis(value, content), mode: 'bedrock', modelId: this.modelId };
+    const value = await this.generate('{"type":"hospital|medication|meal|life|schedule|observation","facts":[{"text":"fact","quote":"exact quote"}],"followUp":[{"text":"explicit follow-up","quote":"exact quote"}]}', { content }, v => validateAnalysis(v, content));
+    return { ...value, mode: 'bedrock', modelId: this.modelId };
   }
   async summarizeCareEvents(events, schedules) {
     const schema = JSON.stringify(Object.fromEntries(sections.map(s => [s, [{ text: 'grounded summary', sources: [{ id: 'event or schedule ID', quote: 'exact quote' }] }]])));
-    const value = await this.invoke(schema, { events: events.map(({ id, type, content, timestamp }) => ({ id, type, content, timestamp })), schedules: schedules.map(({ id, title, scheduledAt }) => ({ id, title, scheduledAt })) });
-    return { mode: 'bedrock', modelId: this.modelId, sections: validateSummary(value, events, schedules) };
+    const value = await this.generate(schema, { events: events.map(({ id, type, content, timestamp }) => ({ id, type, content, timestamp })), schedules: schedules.map(({ id, title, scheduledAt }) => ({ id, title, scheduledAt })) }, v => validateSummary(v, events, schedules));
+    return { mode: 'bedrock', modelId: this.modelId, sections: value };
   }
 }
 export async function createAnalysisService(env = process.env) {
