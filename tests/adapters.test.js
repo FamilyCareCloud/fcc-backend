@@ -106,6 +106,11 @@ test('STT(fcc-ai)는 multipart로 오디오를 전송, 실패·미인식·연결
   assert.equal(calls[0].url, 'http://stt.local/transcribe');
   assert.equal(calls[0].init.method, 'POST');
   assert.ok(calls[0].init.body instanceof FormData);
+  assert.equal(calls[0].init.headers, undefined);
+
+  const keyed = new SttService({ baseUrl: 'http://stt.local', apiKey: 'shared-secret', fetchImpl: async (url, init) => { calls.push({ url, init }); return { ok: true, json: async () => ({ text: '병원' }) }; } });
+  await keyed.transcribe(Buffer.from('audio'), 'audio/wav');
+  assert.equal(calls.at(-1).init.headers['X-API-Key'], 'shared-secret');
 
   const unreachable = new SttService({ baseUrl: 'http://stt.local', fetchImpl: async () => { throw new Error('ECONNREFUSED'); } });
   await assert.rejects(unreachable.transcribe(Buffer.from('a'), 'audio/wav'), error => error.status === 502);
@@ -118,5 +123,7 @@ test('STT(fcc-ai)는 multipart로 오디오를 전송, 실패·미인식·연결
 
   await assert.rejects(new LocalSttService().transcribe(), error => error.status === 503);
   assert.ok(createSttService({}) instanceof LocalSttService);
-  assert.ok(createSttService({ STT_SERVICE_URL: 'http://stt.local' }) instanceof SttService);
+  const configured = createSttService({ STT_SERVICE_URL: 'http://stt.local', STT_SERVICE_API_KEY: 'shared-secret' });
+  assert.ok(configured instanceof SttService);
+  assert.equal(configured.apiKey, 'shared-secret');
 });

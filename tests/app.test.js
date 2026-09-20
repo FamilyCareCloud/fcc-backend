@@ -17,6 +17,13 @@ test('Lambda CORS 사전 요청은 인증 없이 처리하고 실제 요청은 �
   assert.equal(preflight.body, '');
   assert.equal((await handler({ ...event, requestContext: { http: { method: 'GET' } } })).statusCode, 401);
 });
+test('Lambda 본문 상한은 음성 경로에서만 오디오 크기를 허용', async () => {
+  const handler = createLambdaHandler(async () => ({ status: 200, body: {} }));
+  const big = 'A'.repeat(200000);
+  const call = (rawPath, body) => handler({ rawPath, requestContext: { http: { method: 'POST' } }, headers: {}, body: JSON.stringify(body) });
+  assert.equal((await call('/groups/g1/assistant/voice', { audioBase64: big })).statusCode, 200);
+  assert.equal((await call('/groups/g1/assistant', { question: big })).statusCode, 413);
+});
 async function fixture(options = {}) {
   const store = options.store ?? new Store();
   const app = createApp(store, { clock: () => now, ...options });
