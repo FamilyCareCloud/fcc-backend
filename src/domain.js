@@ -33,6 +33,20 @@ export const email = value => {
   return normalized;
 };
 export const dayInSeoul = value => new Date(Date.parse(value) + 9 * 3600000).toISOString().slice(0, 10);
+const shiftDay = (day, days) => new Date(Date.parse(`${day}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+// 질문에 든 날짜 표현(오늘·내일·모레·이번 주·다음 주)을 한국 시간 기준 [from, to] 날짜(YYYY-MM-DD, 양끝 포함)로 바꾼다.
+// 주는 월요일~일요일. 날짜 표현이 없으면 null.
+export function dateScope(question, now) {
+  const today = dayInSeoul(now);
+  const mondayOffset = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const monday = shiftDay(today, -mondayOffset);
+  if (/오늘/.test(question)) return { from: today, to: today, label: '오늘' };
+  if (/내일/.test(question)) return { from: shiftDay(today, 1), to: shiftDay(today, 1), label: '내일' };
+  if (/모레/.test(question)) return { from: shiftDay(today, 2), to: shiftDay(today, 2), label: '모레' };
+  if (/이번\s*주/.test(question)) return { from: today, to: shiftDay(monday, 6), label: '이번 주' };
+  if (/다음\s*주/.test(question)) return { from: shiftDay(monday, 7), to: shiftDay(monday, 13), label: '다음 주' };
+  return null;
+}
 export const audioMimeTypes = ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/flac', 'audio/ogg', 'audio/webm'];
 export function base64Audio(value, maxBytes) {
   if (typeof value !== 'string' || !value.trim()) fail(400, 'audioBase64: 올바른 문자열이 필요합니다.');

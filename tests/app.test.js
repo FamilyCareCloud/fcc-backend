@@ -7,6 +7,7 @@ import { Store } from '../src/store.js';
 import { createApp } from '../src/app.js';
 import { createHttpServer } from '../src/handlers/http.js';
 import { createLambdaHandler } from '../src/handlers/lambda.js';
+import { dateScope } from '../src/domain.js';
 const now = '2026-09-10T05:00:00.000Z';
 const password = 'FamilyCare!12345';
 test('Lambda CORS 사전 요청은 인증 없이 처리하고 실제 요청은 인증을 유지', async () => {
@@ -285,6 +286,42 @@ test('음성 질문은 STT 미설정 시 503, 용량 초과 시 413, 비회원�
   assert.equal(calls, 0);
   assert.equal((await f.call('POST', `${f.p}/assistant/voice`, { audioBase64, mimeType: 'audio/wav' })).status, 200);
   assert.equal(calls, 1);
+});
+test('AI 비서는 오늘·내일·이번 주·다음 주 표현을 한국 시간 기준 날짜 범위로 적용', async () => {
+  // fixture 시계: 2026-09-10(목) 14:00 KST. 이번 주 = 9/7~9/13, 다음 주 = 9/14~9/20
+  const f = await fixture();
+  await makeSchedule(f, { title: '정형외과 진료', scheduledAt: '2026-10-01T10:00:00+09:00' });
+  await makeSchedule(f, { title: '내과 진료', scheduledAt: '2026-09-12T10:00:00+09:00' });
+  await makeSchedule(f, { title: '혈압약 복용', type: 'medication', scheduledAt: '2026-09-11T08:00:00+09:00' });
+  await makeSchedule(f, { title: '아들 방문', type: 'visit', scheduledAt: '2026-09-20T15:00:00+09:00' });
+  const ask = async question => (await f.call('POST', `${f.p}/assistant`, { question })).body;
+
+  const thisWeek = await ask('이번 주 병원 일정이 있나요?');
+  assert.ok(thisWeek.answer.includes('내과 진료'));
+  assert.ok(!thisWeek.answer.includes('정형외과 진료'), '3주 뒤 일정을 이번 주 답변에 섞지 않음');
+  assert.equal((await ask('다음 주 병원 일정은?')).answer, '다음 주 예정된 일정이 없습니다.');
+
+  const tomorrow = await ask('내일 일정 알려줘');
+  assert.ok(tomorrow.answer.includes('혈압약 복용'));
+  assert.ok(!tomorrow.answer.includes('내과 진료'));
+  assert.equal(tomorrow.sources.length, 1);
+
+  assert.equal((await ask('이번 주에 누가 방문해?')).answer, '이번 주 예정된 일정이 없습니다.');
+  assert.ok((await ask('다음 주 방문 일정')).answer.includes('아들 방문'));
+
+  const unscoped = await ask('일정 알려줘');
+  assert.deepEqual(unscoped.sources, []);
+  assert.ok(unscoped.answer.includes('담당 보호자'));
+});
+test('dateScope는 주 경계(월~일)와 날짜 표현 우선순위를 한국 시간으로 계산', () => {
+  const at = iso => dateScope('이번 주', iso), next = iso => dateScope('다음 주 일정', iso);
+  assert.deepEqual(at('2026-09-10T05:00:00.000Z'), { from: '2026-09-10', to: '2026-09-13', label: '이번 주' });
+  assert.deepEqual(at('2026-09-13T14:00:00.000Z'), { from: '2026-09-13', to: '2026-09-13', label: '이번 주' }, '일요일 23시(KST)는 그 주의 마지막 날');
+  assert.deepEqual(at('2026-09-13T15:00:00.000Z'), { from: '2026-09-14', to: '2026-09-20', label: '이번 주' }, 'UTC 일요일 24시 = 한국 월요일 00시부터 새 주');
+  assert.deepEqual(next('2026-09-10T05:00:00.000Z'), { from: '2026-09-14', to: '2026-09-20', label: '다음 주' });
+  assert.deepEqual(dateScope('내일 약 언제야', '2026-09-30T20:00:00.000Z'), { from: '2026-10-02', to: '2026-10-02', label: '내일' }, '월말·자정 넘김은 한국 날짜로 계산');
+  assert.equal(dateScope('오늘 내일 뭐 해?', '2026-09-10T05:00:00.000Z').label, '오늘');
+  assert.equal(dateScope('병원 언제야', '2026-09-10T05:00:00.000Z'), null);
 });
 test('저장 실패 시 그룹 생성과 사용자 멤버십을 함께 롤백', async () => {
   const f = await fixture();

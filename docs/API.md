@@ -77,7 +77,7 @@ type: hospital/examination/visit/care_center/medication/other. 상태: scheduled
 
 - GET/POST `/groups/{g}/approvals`: 조회/요청 생성(scheduleId, action: cancel/reschedule, reason, reschedule은 proposedAt 필수).
 - PATCH `/groups/{g}/approvals/{id}`: decision: approve/reject/call. 현재 담당자만. call은 연락 필요 표시이며 발송하지 않습니다.
-- POST `/groups/{g}/assistant`: question. DB 기반 제한된 한국어 병원/복약/방문/오늘 일정/담당자 조회. 주간·월간 등 복잡한 자연어 기간 파싱은 미지원입니다.
+- POST `/groups/{g}/assistant`: question. DB 기반 제한된 한국어 병원·복약·방문·일정/담당자 조회. 날짜 표현은 오늘·내일·모레·이번 주·다음 주를 한국 시간 기준으로 해석하며(주는 월~일), 해당 범위에 일정이 없으면 없다고 답합니다. 월간·특정 날짜 등 그 밖의 기간 표현은 지원하지 않습니다.
 - POST `/groups/{g}/assistant/voice`: audioBase64(base64 오디오, 기본 4MB 이하), 선택 mimeType. [fcc-ai](https://github.com/FamilyCareCloud/fcc-ai)의 GPU STT(`feature/stt-service`, Whisper-small+LoRA)로 전사한 뒤 `/groups/{g}/assistant`와 동일한 DB 근거 답변을 반환합니다. 응답에 `transcript`가 추가됩니다. `STT_SERVICE_URL` 미설정 시 **503**, STT 서버 연결 실패/오류 시 **502**, 인식 결과가 비어있으면 **422**, 오디오가 `AUDIO_MAX_BYTES`(기본 4MB)를 넘으면 **413**입니다. fcc-ai는 로컬 GPU 환경에서 별도 프로세스(uvicorn)로 실행해야 합니다.
 
 ## 데이터·오류 계약
