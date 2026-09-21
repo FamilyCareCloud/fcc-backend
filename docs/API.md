@@ -1,6 +1,6 @@
 # API 계약 v0.2
 
-`Authorization: Bearer <accessToken>` 인증. `/health`, `/auth/register`, `/auth/login`, `/auth/confirm`만 공개입니다. 기존 DEV_TOKEN 및 userId 헤더 방식은 제거했습니다. 요청은 JSON 객체, 오류는 `{error, code}`입니다. 작성자·소유자·생성 ID를 요청에서 위조할 수 없습니다.
+`Authorization: Bearer <accessToken>` 인증. `/health`, `/auth/register`, `/auth/login`, `/auth/confirm`, `/auth/resend-confirmation`만 공개입니다. 기존 DEV_TOKEN 및 userId 헤더 방식은 제거했습니다. 요청은 JSON 객체, 오류는 `{error, code}`입니다. 작성자·소유자·생성 ID를 요청에서 위조할 수 없습니다.
 
 로컬 로그인 토큰은 8시간, Cognito는 템플릿 기준 1시간 유효합니다. 로그아웃은 로컬 현재 세션 폐기, Cognito 계정의 전체 세션 로그아웃입니다. Cognito에서는 가입 후 이메일 코드 확인이 필요합니다. 로컬 confirm은 사용하지 않습니다.
 
@@ -9,7 +9,7 @@
 | 메서드 | 경로 | 본문/설명 |
 |---|---|---|
 | GET | /health | 상태 확인 |
-| POST | /auth/register | email, password(12~128자), name → 201 |
+| POST | /auth/register | email, password(8~128자, 특수문자 최소 1개), name → 201 |
 | POST | /auth/confirm | email, code; Cognito 이메일 확인 |
 | POST | /auth/login | email, password → accessToken, tokenType, expiresAt, user |
 | POST | /auth/logout | 빈 객체 |
@@ -87,3 +87,5 @@ API의 `id`는 엔티티별 eventId/scheduleId/careGroupId/handoffId에 해당�
 성공은 일반 요청 200, 그룹·기록·일정·초대·고령자·인수인계 생성 201. 오류는 400(검증), 401(인증), 403(권한), 404(없음/다른 그룹), 409(충돌), 413(용량), 422(요약 기록 없음/음성 미인식), 429(로그인 제한), 502(AI·STT 실패), 503(인증/AWS 초기화/STT 미설정), 500(저장 등 내부 실패).
 
 로컬 프론트 개발 서버는 백엔드로 프록시하세요. AWS CORS 허용 Origin은 배포 파라미터로 지정합니다. 민감한 응답에는 Cache-Control: no-store가 적용됩니다.
+
+회원가입 정책·오류 코드·인증 재개·재전송 제한은 [인증 API 상세 계약](AUTH_API.md)을 참고하세요.

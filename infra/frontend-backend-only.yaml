@@ -46,10 +46,10 @@ Resources:
         CaseSensitive: false
       Policies:
         PasswordPolicy:
-          MinimumLength: 12
-          RequireLowercase: true
-          RequireUppercase: true
-          RequireNumbers: true
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireUppercase: false
+          RequireNumbers: false
           RequireSymbols: true
       Schema:
         - Name: email
@@ -96,6 +96,7 @@ Resources:
         Variables:
           DYNAMODB_TABLE: !Ref Database
           COGNITO_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_USER_POOL_ID: !Ref UserPool
           AI_PROVIDER: local
           STT_SERVICE_URL: !Ref SttServiceUrl
           STT_SERVICE_API_KEY: !Ref SttServiceApiKey
@@ -104,6 +105,9 @@ Resources:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem, dynamodb:ConditionCheckItem]
               Resource: !GetAtt Database.Arn
+            - Effect: Allow
+              Action: [cognito-idp:AdminGetUser]
+              Resource: !GetAtt UserPool.Arn
       Events:
         Routes:
           Type: HttpApi
