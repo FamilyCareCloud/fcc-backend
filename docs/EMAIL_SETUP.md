@@ -14,3 +14,7 @@
 두 파라미터를 생략하면 기존 Cognito 기본 발송이 유지되므로 새 디자인과 표시명은 적용되지 않습니다. 코드 수정만으로 운영 사용자 풀 설정이나 SES 인증이 변경되지는 않습니다. 이 저장소에서는 실제 배포·메일 수신을 확인하지 않았습니다. 수신 여부는 기존 API의 `deliveryStatus: accepted`만으로 보장되지 않습니다.
 
 공식 문서: https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pool-settings-message-customizations.html
+
+## develop 자동 배포
+
+GitHub Actions는 `infra/frontend-backend-only.yaml`을 사용합니다. 이 템플릿에도 동일한 인증메일 설정을 반영했습니다. 저장소 Actions 변수 `SES_IDENTITY_ARN`, `AUTH_FROM_EMAIL`을 함께 설정하면 배포 시 전달됩니다. 둘 중 하나만 지정하면 배포를 중단합니다. 둘 다 생략하면 이메일 파라미터를 전달하지 않아 기존 스택의 값을 보존하고, 신규 스택은 기본 발송을 사용합니다. `develop` 푸시가 자동 배포를 실행하며 `main` 푸시는 배포를 실행하지 않습니다.

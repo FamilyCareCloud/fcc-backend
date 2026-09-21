@@ -63,16 +63,24 @@ jobs:
       - name: Deploy existing backend stack
         env:
           ARTIFACT_BUCKET: ${{ vars.SAM_ARTIFACT_BUCKET }}
+          SES_IDENTITY_ARN: ${{ vars.SES_IDENTITY_ARN }}
+          AUTH_FROM_EMAIL: ${{ vars.AUTH_FROM_EMAIL }}
           STT_SERVICE_URL: ${{ vars.STT_SERVICE_URL }}
           STT_SERVICE_API_KEY: ${{ secrets.STT_SERVICE_API_KEY }}
         run: |
           set -euo pipefail
           test -n "$ARTIFACT_BUCKET"
+          EMAIL_PARAMETERS=()
+          if [[ -n "$SES_IDENTITY_ARN" || -n "$AUTH_FROM_EMAIL" ]]; then
+            test -n "$SES_IDENTITY_ARN"
+            test -n "$AUTH_FROM_EMAIL"
+            EMAIL_PARAMETERS=("SesIdentityArn=$SES_IDENTITY_ARN" "AuthFromEmail=$AUTH_FROM_EMAIL")
+          fi
           sam deploy --template-file .aws-sam/build/template.yaml \
             --stack-name "$STACK_NAME" --region "$AWS_REGION" \
             --s3-bucket "$ARTIFACT_BUCKET" --s3-prefix fcc-backend-dev \
             --capabilities CAPABILITY_IAM \
-            --parameter-overrides "FrontendOrigin=$FRONTEND_ORIGIN" "SttServiceUrl=$STT_SERVICE_URL" "SttServiceApiKey=$STT_SERVICE_API_KEY" \
+            --parameter-overrides "FrontendOrigin=$FRONTEND_ORIGIN" "SttServiceUrl=$STT_SERVICE_URL" "SttServiceApiKey=$STT_SERVICE_API_KEY" "${EMAIL_PARAMETERS[@]}" \
             --no-confirm-changeset --no-fail-on-empty-changeset
       - name: Check public API and browser access
         run: |
