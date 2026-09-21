@@ -9,7 +9,7 @@
 | 메서드 | 경로 | 본문/설명 |
 |---|---|---|
 | GET | /health | 상태 확인 |
-| POST | /auth/register | email, password(8~128자, 특수문자 최소 1개), name → 201 |
+| POST | /auth/register | email, password(8자 이상, 특수문자 최소 1개), name → 201 |
 | POST | /auth/confirm | email, code; Cognito 이메일 확인 |
 | POST | /auth/login | email, password → accessToken, tokenType, expiresAt, user |
 | POST | /auth/logout | 빈 객체 |
@@ -18,7 +18,7 @@
 | GET | /groups/{g} | 그룹 상세, 현재/다음 담당자와 이력 포함 |
 | GET | /groups/{g}/members | 구성원 ID·이름·역할·가입일 |
 | POST | /groups/{g}/invitations | email, role(caregiver/elder, 기본 caregiver); 소유자만 |
-| POST | /invitations/accept | token; 초대 이메일과 로그인 계정이 일치해야 함 |
+| POST | /invitations/accept | code(6자리 숫자 문자열), 기존 token도 지원; 초대 이메일과 로그인 계정이 일치해야 함 |
 | POST | /groups/{g}/leave | 탈퇴; 담당자·예정 일정 배정을 먼저 해제 |
 | PATCH | /groups/{g}/ownership | userId; 소유자만 다른 보호자에게 이전 |
 | POST | /groups/{g}/elder | name, 선택 birthDate(YYYY-MM-DD/null), note |
@@ -26,7 +26,7 @@
 | GET/PATCH | /groups/{g}/assignment | 담당자/이력 조회; 수정은 nextCaregiverId 또는 null |
 | POST | /groups/{g}/handover | 선택 nextCaregiverId(기존 다음 담당자 사용 가능), fromDate, toDate |
 
-초대는 48시간 유효한 1회용 토큰을 반환합니다. 사용자가 직접 공유하며 이메일 발송은 하지 않습니다. 그룹 생성과 고령자 등록을 분리할 수 있고 그룹당 고령자 한 명만 허용합니다. 소유자 탈퇴는 소유권 이전 후 가능합니다. 현재 담당자만 다음 담당자를 지정하고 교대할 수 있습니다.
+초대는 48시간 유효한 6자리 숫자 1회용 코드(`code`, 호환용 `token`은 같은 값)을 반환합니다. 사용자가 직접 공유하며 이메일 발송은 하지 않습니다. 그룹 생성과 고령자 등록을 분리할 수 있고 그룹당 고령자 한 명만 허용합니다. 소유자 탈퇴는 소유권 이전 후 가능합니다. 현재 담당자만 다음 담당자를 지정하고 교대할 수 있습니다.
 
 ## 돌봄 기록
 
@@ -89,3 +89,5 @@ API의 `id`는 엔티티별 eventId/scheduleId/careGroupId/handoffId에 해당�
 로컬 프론트 개발 서버는 백엔드로 프록시하세요. AWS CORS 허용 Origin은 배포 파라미터로 지정합니다. 민감한 응답에는 Cache-Control: no-store가 적용됩니다.
 
 회원가입 정책·오류 코드·인증 재개·재전송 제한은 [인증 API 상세 계약](AUTH_API.md)을 참고하세요.
+
+초대 수락 요청은 로그인 사용자당 15분 동안 5회까지 가능합니다(성공·실패 모두 포함). 초과 시 `429 INVITATION_ATTEMPT_LIMIT`, `details.retryAfterSeconds`, `details.retryAvailableAt`를 반환합니다. 선행 0 유지를 위해 코드는 문자열로 전송하세요. 기존에 발급된 긴 토큰은 `token` 필드로 만료 전까지 사용할 수 있습니다.

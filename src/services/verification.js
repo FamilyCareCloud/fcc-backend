@@ -8,7 +8,7 @@ export const WINDOW_SECONDS = 3600;
 // Cognito symbols: punctuation (ASCII), not whitespace or arbitrary Unicode letters.
 export function validatePassword(password) {
   if (typeof password !== 'string' || password.length < 8 || password.length > 128 || /\s/.test(password) || !/[\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e]/.test(password)) {
-    throw authError(400, 'PASSWORD_POLICY_VIOLATION', '비밀번호는 공백 없이 8~128자이며 특수문자를 1개 이상 포함해야 합니다.');
+    throw authError(400, 'PASSWORD_POLICY_VIOLATION', '비밀번호는 공백 없이 8자 이상이며 특수문자를 1개 이상 포함해야 합니다.');
   }
 }
 export function authError(status, code, message, details = {}) {

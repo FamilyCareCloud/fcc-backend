@@ -1,5 +1,6 @@
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomInt } from 'node:crypto';
 import { text, fields, choice, birthDate, fail } from '../domain.js';
+import { authError } from './verification.js';
 import { digest } from './auth.js';
 import { CareGroupRepository, UserRepository } from '../repositories/index.js';
 export const requireElder = group => { if (!group.elder) fail(409, '고령자를 먼저 등록하세요.'); };
@@ -56,10 +57,16 @@ export class CareGroupService {
         if (member.role !== 'owner') fail(403, '소유자 권한이 필요합니다.');
         const { email } = await import('../domain.js');
         const address = email(body.email);
-        const token = randomBytes(32).toString('base64url');
+        let token;
+        for (let attempt = 0; attempt < 20; attempt++) {
+          const candidate = String(randomInt(1000000)).padStart(6, '0');
+          const existing = await tx.get(`invite#${digest(candidate)}`);
+          if (!existing || existing.expiresAt <= now) { token = candidate; break; }
+        }
+        if (!token) fail(503, '초대 코드를 생성하지 못했습니다. 다시 시도해주세요.', 'INVITATION_CODE_UNAVAILABLE');
         const invitation = { groupId, email: address, role: choice(body.role ?? 'caregiver', ['caregiver', 'elder'], 'role'), createdBy: userId, createdAt: now, expiresAt: new Date(Date.parse(now) + 48 * 3600000).toISOString() };
         await tx.set(`invite#${digest(token)}`, invitation);
-        return { token, expiresAt: invitation.expiresAt, groupId }; // User shares this token; no unsolicited email is sent.
+        return { code: token, token, expiresAt: invitation.expiresAt, groupId }; // User shares this token; no unsolicited email is sent.
       } else if (resource === 'elder' && !id && ['GET', 'POST', 'PATCH'].includes(method)) {
         if (method === 'GET') { requireElder(group); return group.elder; }
         fields(body, ['name', 'birthDate', 'note']);
@@ -86,7 +93,21 @@ export class CareGroupService {
     });
   }
   async accept(userId, body) {
-    fields(body, ['token']); const token = text(body.token, 'token', 200);
+    fields(body, ['code', 'token']);
+    if (body.code !== undefined && body.token !== undefined && body.code !== body.token) fail(400, 'code와 token이 일치하지 않습니다.');
+    const token = text(body.code ?? body.token, 'code', 200);
+    if (body.code !== undefined && !/^\d{6}$/.test(token)) fail(400, '초대 코드는 6자리 숫자로 입력해주세요.', 'INVITATION_CODE_INVALID');
+    // Reserve attempts separately so failed acceptance also consumes an attempt.
+    await this.store.transaction(async tx => {
+      const key = `invite-attempt#${userId}`, now = Date.parse(this.clock());
+      const state = await tx.get(key);
+      const attempts = (state?.attempts ?? []).filter(at => at > now - 15 * 60000);
+      if (attempts.length >= 5) {
+        const retryAfterSeconds = Math.ceil((attempts[0] + 15 * 60000 - now) / 1000);
+        throw authError(429, 'INVITATION_ATTEMPT_LIMIT', '잠시 후 초대 코드를 다시 입력해주세요.', { retryAfterSeconds, retryAvailableAt: new Date(now + retryAfterSeconds * 1000).toISOString() });
+      }
+      await tx.set(key, { attempts: [...attempts, now], expiresAtEpoch: Math.ceil((now + 15 * 60000) / 1000) });
+    });
     return this.store.transaction(async tx => {
       const key = `invite#${digest(token)}`, invitation = await tx.get(key);
       if (!invitation || invitation.expiresAt <= this.clock()) fail(404, '초대가 없거나 만료되었습니다.');
