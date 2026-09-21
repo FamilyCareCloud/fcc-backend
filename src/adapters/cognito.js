@@ -6,7 +6,7 @@ const ERRORS = {
   NotAuthorizedException: [401, 'INVALID_CREDENTIALS', '이메일 또는 비밀번호가 올바르지 않거나 로그인이 만료되었습니다.'],
   UserNotFoundException: [404, 'ACCOUNT_NOT_FOUND', '가입된 계정을 찾을 수 없습니다.'],
   UsernameExistsException: [409, 'ACCOUNT_ALREADY_EXISTS', '이미 가입된 이메일입니다. 로그인해주세요.'],
-  InvalidPasswordException: [400, 'PASSWORD_POLICY_VIOLATION', '비밀번호는 8~128자이며 특수문자를 1개 이상 포함해야 합니다.'],
+  InvalidPasswordException: [400, 'PASSWORD_POLICY_VIOLATION', '비밀번호는 8자 이상이며 특수문자를 1개 이상 포함해야 합니다.'],
   InvalidParameterException: [400, 'AUTH_INVALID_PARAMETER', '인증 요청의 입력값을 확인해주세요.'],
   CodeMismatchException: [400, 'CONFIRMATION_CODE_MISMATCH', '인증코드가 일치하지 않습니다. 다시 확인해주세요.'],
   ExpiredCodeException: [400, 'CONFIRMATION_CODE_EXPIRED', '인증코드가 만료되었습니다. 새 코드를 요청해주세요.'],

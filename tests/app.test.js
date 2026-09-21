@@ -331,3 +331,40 @@ test('저장 실패 시 그룹 생성과 사용자 멤버십을 함께 롤백', 
   f.store.transaction = original;
   assert.equal((await f.call('GET', '/groups')).body.length, 1);
 });
+
+
+test('6자리 초대 코드: code 요청, 재사용 차단, 시도 제한과 회복', async () => {
+  const f = await fixture(), third = await f.signup('code@example.com', '코드 테스트');
+  const invite = (await f.call('POST', `${f.p}/invitations`, { email: third.email })).body;
+  assert.match(invite.code, /^\d{6}$/);
+  assert.equal(invite.code, invite.token);
+  assert.equal((await f.call('POST', '/invitations/accept', { code: invite.code }, third)).status, 200);
+  for (let i = 0; i < 4; i++) assert.equal((await f.call('POST', '/invitations/accept', { code: invite.code }, third)).status, 404);
+  const limited = await f.call('POST', '/invitations/accept', { code: invite.code }, third);
+  assert.equal(limited.status, 429);
+  assert.equal(limited.body.code, 'INVITATION_ATTEMPT_LIMIT');
+  assert.equal(limited.body.details.retryAfterSeconds, 900);
+  const later = createApp(f.store, { clock: () => '2026-09-10T05:15:00.000Z' });
+  assert.equal((await later({ method: 'POST', path: '/invitations/accept', body: { code: invite.code }, token: third.token })).status, 404);
+});
+
+test('초대 코드는 선행 0을 보존하며 기존 긴 token도 수락', async () => {
+  const f = await fixture(), third = await f.signup('zero@example.com', '코드 테스트');
+  const { digest } = await import('../src/services/auth.js');
+  const invitation = { groupId: f.group.id, email: third.email, role: 'caregiver', createdBy: f.owner.userId, expiresAt: '2026-09-12T05:00:00.000Z' };
+  await f.store.transaction(tx => tx.set(`invite#${digest('012345')}`, invitation));
+  assert.equal((await f.call('POST', '/invitations/accept', { code: 12345 }, third)).status, 400);
+  assert.equal((await f.call('POST', '/invitations/accept', { code: '012345' }, third)).status, 200);
+  const fourth = await f.signup('legacy@example.com', '기존 초대');
+  const token = 'legacy-long-invitation-token-before-six-digit-change';
+  await f.store.transaction(tx => tx.set(`invite#${digest(token)}`, { ...invitation, email: fourth.email }));
+  assert.equal((await f.call('POST', '/invitations/accept', { token }, fourth)).status, 200);
+});
+
+test('비밀번호 오류 문구는 최소 길이만 표시하고 내부 최대 검증은 유지', async () => {
+  const { validatePassword } = await import('../src/services/verification.js');
+  for (const value of ['short!', 'a'.repeat(128) + '!']) {
+    assert.throws(() => validatePassword(value), error => error.code === 'PASSWORD_POLICY_VIOLATION' && error.message.includes('8자 이상') && !error.message.includes('128'));
+  }
+  assert.doesNotThrow(() => validatePassword('abcdefg!'));
+});
