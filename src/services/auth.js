@@ -1,3 +1,4 @@
+import { validatePassword } from './verification.js';
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { email, text, fields, fail } from '../domain.js';
@@ -10,7 +11,7 @@ export class AuthService {
   async register(body) {
     fields(body, ['email', 'password', 'name']);
     const address = email(body.email), name = text(body.name, 'name', 100);
-    if (typeof body.password !== 'string' || body.password.length < 12 || body.password.length > 128) fail(400, '비밀번호는 12~128자여야 합니다.');
+    validatePassword(body.password);
     const salt = randomBytes(16).toString('hex');
     const passwordHash = (await scrypt(body.password, salt, 64)).toString('hex');
     return this.store.transaction(async tx => {

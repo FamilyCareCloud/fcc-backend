@@ -25,7 +25,7 @@ export function createHttpServer(app) {
       const authorization = req.headers.authorization ?? '';
       result = await app({ method: req.method, path: req.url, token: authorization.startsWith('Bearer ') ? authorization.slice(7) : null, body: data ? JSON.parse(data) : {} });
     } catch (error) { result = { status: error.status ?? 400, body: { error: error.status ? error.message : '올바른 JSON 요청이 필요합니다.' } }; }
-    res.writeHead(result.status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    res.writeHead(result.status, { ...(result.status === 429 && result.body?.details?.retryAfterSeconds ? { 'Retry-After': String(result.body.details.retryAfterSeconds) } : {}), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     res.end(JSON.stringify(result.body));
   });
 }
