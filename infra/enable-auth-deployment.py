@@ -11,15 +11,19 @@ resources = cf.describe_stack_resources(StackName='fcc-backend-dev')['StackResou
 by_id = {item['LogicalResourceId']: item for item in resources}
 pool = by_id['UserPool']['PhysicalResourceId']
 api = by_id['Api']['PhysicalResourceId']
+table = by_id['Database']['PhysicalResourceId']
 runtime_role = by_id['BackendRole']['PhysicalResourceId']
 if runtime_role != 'fcc-backend-dev-BackendRole-ypNH6kQpQWTt':
     raise SystemExit('Unexpected runtime role; no changes made')
 policy = {'Version': '2012-10-17', 'Statement': [
+    {'Sid': 'ReadExistingFccTableConfiguration', 'Effect': 'Allow',
+     'Action': ['dynamodb:DescribeTable', 'dynamodb:DescribeContinuousBackups', 'dynamodb:DescribeTimeToLive', 'dynamodb:ListTagsOfResource'],
+     'Resource': f'arn:aws:dynamodb:{region}:{account}:table/{table}'},
     {'Sid': 'UpdateExistingFccApi', 'Effect': 'Allow',
      'Action': ['apigateway:GET', 'apigateway:PATCH'],
      'Resource': f'arn:aws:apigateway:{region}::/apis/{api}'},
     {'Sid': 'UpdateExistingFccUserPool', 'Effect': 'Allow',
-     'Action': ['cognito-idp:DescribeUserPool', 'cognito-idp:UpdateUserPool', 'cognito-idp:ListTagsForResource'],
+     'Action': ['cognito-idp:DescribeUserPool', 'cognito-idp:DescribeUserPoolClient', 'cognito-idp:UpdateUserPool', 'cognito-idp:ListTagsForResource'],
      'Resource': f'arn:aws:cognito-idp:{region}:{account}:userpool/{pool}'},
     {'Sid': 'UpdateExistingFccRuntimePolicy', 'Effect': 'Allow',
      'Action': ['iam:PutRolePolicy'],
