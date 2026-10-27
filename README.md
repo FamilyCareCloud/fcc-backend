@@ -1,3 +1,11 @@
+> **FCC 보존 저장소 — 운영 배포 없음**
+>
+> 이 저장소는 CareBridge 기능 추가 이전의 Family Care Cloud 코드를 보존합니다.
+> 보존 기준: `c2e90d0812d02e4639ee584fd6bca22f02f3af8b`. 원본 그대로의 스냅샷은 [fcc-preserved-2026-10-28](https://github.com/FamilyCareCloud/fcc-backend/tree/fcc-preserved-2026-10-28) 태그에 있습니다.
+> 현재 개발과 기존 배포 연결은 [FamilyCareCloud/carebridge-backend](https://github.com/FamilyCareCloud/carebridge-backend)에서 이어갑니다.
+> Actions는 비활성화되어 있으며 운영 Secret·배포 연결을 복제하지 않았습니다. 아래의 과거 배포 주소·명령은 당시 기록입니다.
+
+---
 # Family Care Cloud backend v0.2
 
 2026-09-10 설계서 v1.00의 보호자 중심 MVP 백엔드입니다. 가입 → 그룹 생성 → 고령자 등록 → 가족 초대/참여 → 기록 작성 → 일정 관리 → 교대/인수인계 → 인수 확인 흐름을 제공합니다.
